@@ -1,0 +1,464 @@
+<template>
+  <div class="content-box">
+    <div class="table-cont">
+      <!-- 搜索条件框 -->
+      <div class="table-top">
+        <div class="table-top-fl">
+          <el-button size="mini" @click="batchDeleteRecommend">批量删除</el-button>
+        </div>
+        <div class="table-top-fr">
+          <!-- 选择类别 -->
+          <el-select class="select" v-model="typeValue" placeholder="选择类别" size="mini" @change="viewFormChange" style="width:150px;margin:0 5px">
+            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value">
+            </el-option>
+          </el-select>
+          <!-- 选择频道 -->
+          <!-- <el-select class="select" v-model="channelValue" placeholder="选择频道" size="mini" @change="viewFormChange">
+            <el-option v-for="item in channelOptions" :key="item.value" :label="item.label" :value="item.value">
+            </el-option>
+          </el-select> -->
+          <el-input placeholder="请输入频道" v-model="channelValue" size="mini" class="search-input" @change="viewFormChange" style="width:150px;margin:0 5px"></el-input>
+          <!-- 选择来源 -->
+          <!-- <el-select class="select" v-model="sourceValue" placeholder="选择来源" size="mini" @change="viewFormChange">
+            <el-option v-for="item in sourceOptions" :key="item.value" :label="item.label" :value="item.value">
+            </el-option>
+          </el-select> -->
+          <el-input placeholder="请输入来源" v-model="sourceValue" size="mini" class="search-input" @change="viewFormChange" style="width:150px;margin-right: 5px"></el-input>
+          <!-- 时间段筛选组件 -->
+          <search-time @getTime="getTime" style="margin-left:5px"></search-time>
+          <el-input placeholder="请输入ID/标题" v-model="searchKey" size="mini" class="search-input" @change="viewFormChange">
+            <i slot="prefix" class="el-input__icon el-icon-search"></i>
+            <el-select class="search-select" v-model="select" slot="prepend" placeholder="请选择">
+              <el-option label="搜索作者" value="0"></el-option>
+              <el-option label="搜索ID/标题" value="1"></el-option>
+            </el-select>
+          </el-input>
+          <el-button size="mini" class="table-top-fr-btn" type="primary" @click="search()">搜索</el-button>
+        </div>
+      </div>
+      <!-- 表格数据 -->
+      <el-table ref="multipleTable" :data="tableData" tooltip-effect="dark" @selection-change="handleSelectionChange" border highlight-current-row header-row-class-name="strong">
+        <el-table-column type="selection" width="55">
+        </el-table-column>
+        <!-- 文章标题 -->
+        <el-table-column label="文章标题" align="center" width="200">
+          <template slot-scope="scope">
+            <span class="perfect-tag" style="margin-left: 5px" v-if="scope.row.isRecommend === '1'">推荐</span>
+            <span>{{scope.row.title}}</span>
+          </template>
+        </el-table-column>
+        <!-- 作者信息 -->
+        <el-table-column label="作者Id/作者名" align="center" width="180">
+          <template slot-scope="scope">
+            <div class="clearfix" style="text-align:left">
+              <label class="author-label">作者Id：</label>
+              <span class="author-value">{{scope.row.authorId ? scope.row.authorId : '暂无Id'}}</span>
+            </div>
+            <div class="clearfix" style="text-align:left">
+              <label class="author-label">作者名：</label>
+              <span class="author-value">{{scope.row.authorName ? scope.row.authorName : '佚名'}}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <!-- 操作 -->
+        <el-table-column label="操作" align="center" width="270">
+          <template slot-scope="scope">
+            <el-button size="mini" class="table-btn" @click="see(scope.$index, scope.row)">查看</el-button>
+            <!-- <el-button size="mini" class="table-btn" @click="recommend(scope.$index, scope.row)">{{scope.row.isRecommend === '0' ? '推荐' : '取消推荐'}}</el-button> -->
+            <el-popover placement="top" width="300" trigger="click" v-model="scope.row.recommendPopoverVisible">
+              <el-button size="mini" class="table-btn" slot="reference" @click="scope.row.recommendPopoverVisible = true">{{scope.row.isRecommend === '0' ? '推荐' : '取消推荐'}}</el-button>
+              <p style="margin-bottom: 15px">
+                <i class="el-icon-warning color-yellow"></i>你确定{{scope.row.isRecommend === '0' ? '推荐' : '取消推荐'}}吗？</p>
+              <div style="text-align: right">
+                <el-button type="info" plain size="mini" @click="scope.row.recommendPopoverVisible = false">取消</el-button>
+                <el-button type="primary" size="mini" @click="recommend(scope.$index, scope.row)">{{scope.row.isRecommend === '0' ? '推荐' : '取消推荐'}}</el-button>
+              </div>
+            </el-popover>
+
+            <el-button size="mini" class="table-btn copy-btn" :data-clipboard-text="tableData[scope.$index].previewUrl" @click="copyLink(scope.$index, scope.row)">复制链接</el-button>
+          </template>
+        </el-table-column>
+        <common-table :propData="propData"></common-table>
+      </el-table>
+      <!-- 翻页 -->
+      <div class="page">
+        <el-pagination background layout="prev, pager, next" :total="totalSize" :page-size="pageSize" :current-page="pageNo" @current-change="handleCurrentChange">
+        </el-pagination>
+      </div>
+      <!-- 查看内容 -->
+      <el-dialog class="content-dialog" :visible.sync="dialogVisible" width="650px">
+        <iframe class="contentFrames" :data="dialogFrameUrl" :src="dialogFrameUrl"></iframe>
+      </el-dialog>
+    </div>
+  </div>
+</template>
+
+<script>
+import SearchTime from '@/components/common/SearchTime' // 公共时间搜索组件
+import CommonTable from '@/components/table/CommonTable' // 导入公用表格组件
+import Clipboard from 'clipboard' // 导入剪贴板组件
+export default {
+  name: 'ContentRecommend',
+  data () {
+    return {
+      propData: [ // 表头数据
+        {
+          prop: 'itemId',
+          label: '文章id'
+        },
+        {
+          prop: 'source',
+          label: '来源'
+        },
+        {
+          prop: 'channel',
+          label: '所属频道'
+        },
+        {
+          prop: 'itemType',
+          label: '类别',
+          formatter: this.formatItemType
+        },
+        {
+          prop: 'janesiTime',
+          label: '获取时间'
+        },
+        {
+          prop: 'scan',
+          label: '浏览次数'
+        }
+      ],
+      tableData: [], // 默认表格数据
+      totalSize: 0, // 总数量
+      pageSize: 10, // 每页数量
+      pageNo: 1, // 页码
+      totalPage: 0, // 总页数
+      pageDataLength: 0, // 当前页数据条数
+      searchKey: '',
+      typeOptions: [ // 选择类别
+        {
+          value: 'ARTICLE',
+          label: '文章'
+        }, {
+          value: 'AUDIO',
+          label: '音频'
+        }, {
+          value: 'VIDEO',
+          label: '视频'
+        }, {
+          value: 'IMAGES',
+          label: '图集'
+        }, {
+          value: 'AD',
+          label: '广告'
+        }, {
+          value: 'VAD',
+          label: '视频广告'
+        }, {
+          value: '',
+          label: '全部'
+        }],
+      typeValue: '',
+      // 选择频道
+      channelOptions: [
+        {
+          value: '频道1',
+          label: '频道1'
+        }, {
+          value: '频道2',
+          label: '频道2'
+        }, {
+          value: '',
+          label: '全部'
+        }],
+      // 频道Value
+      channelValue: '',
+      // 选择来源
+      sourceOptions: [{
+        value: '来源1',
+        label: '来源1'
+      }, {
+        value: '来源2',
+        label: '来源2'
+      }, {
+        value: '',
+        label: '全部'
+      }
+      ],
+      sourceValue: '', // 来源Value
+      sDate: '',
+      eDate: '',
+      select: '0',
+      dialogVisible: false,
+      recommendPopoverVisible: false, // 推荐（取消推荐）确认浮层显隐
+      dialogFrameUrl: '', // 内容iframe的url
+      batchItemItems: [] // 批量选中的内容
+    }
+  },
+  methods: {
+    // 获取统计数据
+    getData (bean) {
+      this.$http.post(this.$store.state.testApi + '/admin/bops/content_manage/recommend_list',
+        this.filterData(bean)
+      ).then(res => {
+        if (res.data.code === '0') {
+          this.tableData = res.data.result !== null ? res.data.result : []
+          this.pageSize = parseInt(res.data.pageSize)
+          this.totalSize = parseInt(res.data.totalSize)
+          this.pageNo = parseInt(res.data.pageNo)
+          this.pageDataLength = parseInt(res.data.result.length)
+          this.totalPage = parseInt(res.data.totalPage)
+        }
+      })
+    },
+
+    // 切换页码方法
+    handleCurrentChange (val) {
+      this.search(val)
+    },
+
+    // 从子组件获取时间段筛选数据
+    getTime (val) {
+      this.sDate = val !== null ? val[0].split(' ')[0] + ' 00:00:00' : '' // 开始时间
+      this.eDate = val !== null ? val[1].split(' ')[0] + ' 23:59:59' : ''// 结束时间
+      this.search()
+    },
+
+    // 搜索标题或者id
+    search (pageNo) {
+      let params = {
+        type: this.typeValue,
+        channel: this.channelValue,
+        source: this.sourceValue,
+        sDate: this.sDate,
+        eDate: this.eDate,
+        pageSize: 10,
+        pageNo: 1
+      }
+      if (pageNo) {
+        params.pageNo = pageNo
+      }
+      if (this.select === '0') {
+        params.authorId = this.searchKey
+      } else if (this.select === '1') {
+        params.key = this.searchKey
+      }
+      this.getData(params)
+    },
+
+    // 选择表格行
+    handleSelectionChange (val) {
+      this.batchItemItems = []
+      for (var i in val) {
+        var paramObj = {
+          itemId: val[i].itemId,
+          recommendSourceEnum: val[i].recommendSource
+        }
+        this.batchItemItems.push(paramObj)
+      }
+    },
+
+    // 输出搜索表单变更情况
+    viewFormChange () {
+      let params = {
+        type: this.typeValue,
+        channel: this.channelValue,
+        source: this.sourceValue,
+        sDate: this.sDate,
+        eDate: this.eDate,
+        authorId: this.searchKey,
+        key: this.searchKey,
+        pageSize: 10,
+        pageNo: 1
+      }
+      params.pageNo = 1
+    },
+
+    // 查看内容
+    see (index, row) {
+      this.dialogVisible = !this.dialogVisible
+      this.dialogFrameUrl = row.previewUrl
+    },
+
+    // 取消推荐
+    recommend (index, row) {
+      let param = {
+        itemId: row.itemId,
+        recommendSourceEnum: row.recommendSource
+      }
+      let params = {
+        recommendReqVOS: JSON.stringify(param)
+      }
+      this.$http.post(this.$store.state.testApi + '/admin/bops/content_manage/not_recommend_content',
+        this.filterData(params)
+      ).then(res => {
+        if (res.data.code === '0') {
+          this.$message({
+            type: 'success',
+            message: '取消成功！'
+          })
+          this.bean.pageNo = this.pageNo
+          this.getData(this.bean)
+        } else {
+          this.$message.error(res.msg)
+        }
+      })
+    },
+
+    // 复制链接
+    copyLink (index, row) {
+      var clipboard = new Clipboard('.copy-btn')
+      let $this = this
+      clipboard.on('success', function (e) {
+        $this.$message({
+          type: 'success',
+          message: '复制成功！'
+        })
+        e.clearSelection()
+      })
+
+      clipboard.on('error', function (e) {
+        $this.$message({
+          type: 'success',
+          message: '复制失败！'
+        })
+      })
+    },
+
+    // 表格 类别数据格式转换
+    formatItemType (row, column) {
+      let itemTypeValue = ''
+      switch (row.itemType) {
+        case 'ARTICLE':
+          itemTypeValue = '文章'
+          break
+        case 'VIDEO':
+          itemTypeValue = '视频'
+          break
+        case 'AUDIO':
+          itemTypeValue = '音频'
+          break
+        case 'IMAGES':
+          itemTypeValue = '图集'
+          break
+        case 'AD':
+          itemTypeValue = '广告'
+          break
+        default:
+          itemTypeValue = '视频广告'
+      }
+      return itemTypeValue
+    },
+
+    // 批量删除推荐
+    batchDeleteRecommend () {
+      let params = {
+        recommendReqVOS: JSON.stringify(this.batchItemItems)
+      }
+      this.$http.post(this.$store.state.testApi + '/admin/bops/content_manage/not_recommend_content',
+        this.filterData(params)
+      ).then(res => {
+        if (res.data.code === '0') {
+          this.$message({
+            type: 'success',
+            message: '批量取消成功！'
+          })
+          if (this.pageNo === this.totalPage && parseInt(this.batchItemItems.length) === this.pageDataLength) {
+            this.bean.pageNo = this.pageNo - 1
+          } else {
+            this.bean.pageNo = this.pageNo
+          }
+          this.getData(this.bean)
+        } else if (res.data.code === '7000') {
+          this.$message.error(res.data.msg)
+        } else {
+          this.$message.warning('请至少选择一条内容进行取消操作！')
+        }
+      })
+    }
+  },
+  mounted () {
+    this.$store.state.activeRouter = '/ContentRecommend'
+    // 搜索请求数据重置
+    this.bean = {
+      pageSize: this.pageSize,
+      pageNo: this.pageNo
+    }
+    // 获取统计数据
+    this.getData(this.bean)
+  },
+  components: {
+    SearchTime,
+    CommonTable
+  }
+}
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped>
+.table-cont {
+  padding: 0 25px;
+  background-color: #fff;
+}
+.table-top {
+  padding: 16px 0 8px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.table-top-fl {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.table-top-fr {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.table-top-fr-btn {
+  margin-left: 8px;
+}
+.page {
+  padding: 25px 0 40px 0;
+  text-align: right;
+}
+.select {
+  margin-right: 8px;
+}
+.search-input {
+  margin-left: 8px;
+  width: 260px;
+}
+.search-select .el-input-group__prepend {
+  background-color: #fff;
+}
+.search-select {
+  width: 130px;
+}
+.perfect-tag {
+  color: #f56c6c;
+  border: 1px solid #f56c6c;
+  border-radius: 3px;
+  background: #fef0f0;
+  padding: 1px 5px;
+  font-size: 12px;
+  vertical-align: top;
+  cursor: default;
+  /* 禁止文字被鼠标选中  */
+  -moz-user-select: -moz-none;
+  -moz-user-select: none;
+  -o-user-select: none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.contentFrames {
+  width: 100%;
+  height: calc(100% + 16px);
+  border: 0;
+}
+</style>
